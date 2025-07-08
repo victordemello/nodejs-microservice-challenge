@@ -1,5 +1,11 @@
+import '@opentelemetry/auto-instrumentations-node/register'
+import { trace } from '@opentelemetry/api'
+
 import {fastify} from 'fastify'
+
 import {randomUUID} from 'node:crypto'
+import { setTimeout } from 'node:timers/promises'
+
 import {fastifyCors} from '@fastify/cors'
 import {z} from 'zod'
 import {
@@ -11,6 +17,7 @@ import { channels } from '../broker/channels/index.ts'
 import { db } from '../db/client.ts'
 import { schema } from '../db/schema/index.ts'
 import { dispatchOrderCreated } from '../broker/messages/order_created.ts'
+import { tracer } from '../tracer/tracer.ts'
 
 const app = fastify().withTypeProvider<ZodTypeProvider>()
 
@@ -39,20 +46,30 @@ app.post('/orders', {
 
     const orderId = randomUUID()
 
-    dispatchOrderCreated({
-        orderId,
-        amount,
-        customer: {
-            id: 'fe6aebbc-2502-4772-a004-d84e42710dfc'
-        },
-    })
-
     try {
 
         await db.insert(schema.orders).values({
         id: randomUUID(),
         customerId: 'fe6aebbc-2502-4772-a004-d84e42710dfc',
         amount,
+        })
+
+        const span = tracer.startSpan('File: server.ts, Method: post, endpoint: /orders')
+
+        span.setAttribute('test', 'Hello World')
+
+        await setTimeout(2000)
+
+        span.end()
+    
+        trace.getActiveSpan()?.setAttribute('order_id', orderId)
+
+        dispatchOrderCreated({
+            orderId,
+            amount,
+            customer: {
+                id: 'fe6aebbc-2502-4772-a004-d84e42710dfc'
+            },
         })
 
     }catch(err){
